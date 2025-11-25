@@ -12,7 +12,9 @@ Using a dataset of **1,500+ universities** and **10+ institutional indicators**,
 - Stepwise AIC model refinement  
 - Box–Cox transformation  
 - Influential point diagnostics (Cook’s Distance, DFFITS, leverage)  
-- Final model inference and interpretation  
+- Final model inference and interpretation
+
+The final model explains **~81% of the variance in the transformed Academic Reputation Score**, revealing the most important structural factors driving institutional reputation.
 
 **Full report:** [final project report (1).pdf](final%20project%20report%20(1).pdf)
 **Full R code:** [STA302(FINAL_CODE__).Rmd](STA302(FINAL_CODE__).Rmd)
