@@ -1,0 +1,467 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r,message=FALSE, echo=FALSE,warning=FALSE, include=FALSE}
+library(tidyverse)
+library(readr)
+set.seed(42)
+
+# Load the data
+# data <- read.csv("C:/Users/123/Downloads/QS World University Rankings 2025 (Top global universities).csv", encoding # = "UTF-8", stringsAsFactors = FALSE) (For Windows System)
+data <- read.csv("QS World University Rankings 2025 (Top global universities).csv", 
+                 encoding = "UTF-8", stringsAsFactors = FALSE)
+
+# Convert numeric columns
+num_cols <- c("Employer_Reputation_Score", "Faculty_Student_Score", "Citations_per_Faculty_Score",
+              "International_Faculty_Score", "International_Students_Score",
+              "International_Research_Network_Score", "Employment_Outcomes_Score",
+              "Sustainability_Score", "Academic_Reputation_Score")
+
+data[num_cols] <- lapply(data[num_cols], parse_number)
+
+# Remove NA values
+data <- na.omit(data)
+
+# Convert SIZE to factor
+data$SIZE <- as.factor(data$SIZE)
+summary(data)
+
+# Splitting data
+sample_size <- floor(0.7 * nrow(data))
+train_indices <- sample(seq_len(nrow(data)), size = sample_size)
+train <- data[train_indices, ]
+test <- data[-train_indices, ]
+
+# Building the MLR model
+mlr_model <- lm(Academic_Reputation_Score ~ Employer_Reputation_Score + Faculty_Student_Score +
+               Citations_per_Faculty_Score + International_Faculty_Score + International_Students_Score +
+               International_Research_Network_Score + Employment_Outcomes_Score +
+               Sustainability_Score + SIZE, data = train)
+summary(mlr_model)
+
+# Extracting MLR formula
+coef <- coef(mlr_model)
+formula_text <- paste("Academic_Reputation_Score =", round(coef[1], 2))
+for (i in 2:length(coef)) {
+  term <- paste(round(coef[i], 2), "*", names(coef)[i])
+  if (coef[i] >= 0) {
+    formula_text <- paste(formula_text, "+", term)
+  } else {
+    formula_text <- paste(formula_text, term)
+  }
+}
+cat("MLR Formula: ", formula_text)
+
+# Predictions
+pred <- predict(mlr_model, newdata = test)
+
+# MSE and R-squared
+mse <- mean((test$Academic_Reputation_Score - pred)^2)
+rsq <- summary(mlr_model)$r.squared
+cat("MSE:", mse, "\nR-squared:", rsq)
+
+```
+
+```{r}
+# Residual Analysis
+
+# Checking 4 linear regression assumptions
+
+# 1. Linearity and Homoscedasticity
+plot(mlr_model, which = 1) # plot residual vs. Y hat(i.e Fitted Value)
+```
+
+```{r}
+# 1.1 Residual vs Individual Predictors
+
+# Residuals vs Numeric X
+plot(train$Faculty_Student_Score, resid(mlr_model),
+     xlab = "Faculty_Student_Score", ylab = "Residuals",
+     main = "Residuals vs Faculty_Student_Score")
+
+# Residuals vs Categorical X
+boxplot(resid(mlr_model) ~ train$SIZE,
+        xlab = "SIZE", ylab = "Residuals",
+        main = "Residuals vs SIZE")
+```
+
+```{r}
+# 2. Normality of the Errors
+
+# QQ plot
+plot(mlr_model, which = 2)
+
+# Standardized Residuals Histogram
+s_residual_values <- rstandard(mlr_model)
+hist(s_residual_values, xlab = "Standardized Residuals", main = "Standardized Residuals Histogram")
+```
+
+```{r}
+# 3. Uncorrelated Residuals
+
+# Extract design matrix X
+X <- model.matrix(mlr_model)
+n <- nrow(X)
+p <- ncol(X)
+
+# Find hat matrix H
+H <- X %*% solve(t(X) %*% X) %*% t(X)
+
+# Estimating the variance of residual
+s2 <- sum(resid(mlr_model)^2) / (n - p)
+
+# Find Cov(e) = s^2 * (I - H)
+I <- diag(n)
+Cov_e <- s2 * (I - H)
+
+# Check whether the covariance matrix is zero matrix
+all(Cov_e == 0)
+```
+
+```{r}
+# Raw Model
+mlr_model <- lm(Academic_Reputation_Score ~ Employer_Reputation_Score + Faculty_Student_Score +
+               Citations_per_Faculty_Score + International_Faculty_Score + International_Students_Score +
+               International_Research_Network_Score + Employment_Outcomes_Score +
+               Sustainability_Score + SIZE, data = train)
+summary(mlr_model)
+```
+
+```{r}
+# SECTION 4
+
+# Model Selection
+
+# Check the VIFs of raw model
+install.packages("car")
+library(car)
+vif_values <- vif(mlr_model)
+print(vif_values)
+```
+
+```{r}
+# Lasso Regression for Choosing Important Predictors
+library(glmnet)
+
+# Step 1: Create design matrix X (remove intercept column)
+X <- model.matrix(Academic_Reputation_Score ~ ., data = train)[, -1]  # remove intercept
+y <- train$Academic_Reputation_Score
+
+# # Step 2: Perform Lasso regression with 10-fold cross-validation
+lasso_cv <- cv.glmnet(X, y, alpha = 1)
+best_lambda <- lasso_cv$lambda.min
+
+# Extract non-zero coefficients
+lasso_coef <- coef(lasso_cv, s = best_lambda)
+selected_vars <- rownames(lasso_coef)[lasso_coef[, 1] != 0]
+selected_vars <- selected_vars[selected_vars != "(Intercept)"]  # remove intercept
+
+# Step 4: Print selected variables
+cat("Variables selected by Lasso:\n")
+print(selected_vars)
+
+```
+
+```{r}
+# Formula of the model after conducting lasso regression
+formula_lasso <- Academic_Reputation_Score ~ SIZE + Employer_Reputation_Score +
+  Faculty_Student_Score + Citations_per_Faculty_Score + International_Students_Score +
+  International_Research_Network_Score + Employment_Outcomes_Score + Sustainability_Score
+
+lasso_model <- lm(formula_lasso, data = train)
+
+# Produce the information
+summary(lasso_model)
+```
+```{r}
+# Stepwise Selection
+library(MASS)
+
+# stepwise selection (both directions)
+step_model <- stepAIC(lasso_model, direction = "both", trace = FALSE)
+
+# Produce the information
+summary(step_model)
+```
+```{r}
+# VIFs of step_model
+vif_value <- vif(step_model)
+print(vif_value)
+```
+
+```{r}
+# Model validation between mlr_model and step_model
+# Load necessary library
+if (!require("boot")) install.packages("boot")
+library(boot)
+
+# Define formulas based on the fitted models
+formula_step <- formula(step_model)  # Extract formula from the stepwise model
+formula_mlr  <- formula(mlr_model)   # Extract formula from the full MLR model
+
+# Refit models using the training data
+model_step_cv <- glm(formula_step, data = train)
+model_mlr_cv  <- glm(formula_mlr, data = train)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Perform 10-fold cross-validation
+cv_step <- cv.glm(train, model_step_cv, K = 10)
+cv_mlr  <- cv.glm(train, model_mlr_cv, K = 10)
+
+# Extract Mean Squared Error (MSE)
+mse_step <- cv_step$delta[1]
+mse_mlr  <- cv_mlr$delta[1]
+
+# Print comparison results
+cat("10-fold CV MSE - Stepwise Model:", mse_step, "\n")
+cat("10-fold CV MSE - Full MLR Model:", mse_mlr, "\n")
+```
+
+
+```{r}
+# Model 3 plots (for model diagonstics)
+par(mfrow = c(2, 2))
+plot(step_model)
+```
+
+```{r}
+# Partial F test among models
+
+# Raw Model
+model1 <- lm(Academic_Reputation_Score ~ Employer_Reputation_Score + Faculty_Student_Score +
+               Citations_per_Faculty_Score + International_Faculty_Score + International_Students_Score +
+               International_Research_Network_Score + Employment_Outcomes_Score +
+               Sustainability_Score + SIZE, data = train)
+
+# International_Faculty_Score was removed
+model2_after_lasso <- lm(Academic_Reputation_Score ~ SIZE + Employer_Reputation_Score +
+  Faculty_Student_Score + Citations_per_Faculty_Score + International_Students_Score +
+  International_Research_Network_Score + Employment_Outcomes_Score + Sustainability_Score, data = train)
+
+# International_Faculty_Score and Faculty_Student_Score were removed
+model3_after_stepwise <- lm(Academic_Reputation_Score ~ SIZE + Employer_Reputation_Score + 
+    Citations_per_Faculty_Score + International_Students_Score + 
+    International_Research_Network_Score + Employment_Outcomes_Score + 
+    Sustainability_Score, data = train)
+
+# Model with International_Faculty_Score and without Faculty_Student_Score
+model4_add_one_variable <- lm(Academic_Reputation_Score ~ Employer_Reputation_Score + 
+               Citations_per_Faculty_Score + International_Faculty_Score + International_Students_Score +
+               International_Research_Network_Score + Employment_Outcomes_Score +
+               Sustainability_Score + SIZE, data = train)
+  
+# ANOVA Tables
+anova(model2_after_lasso, model1)
+anova(model3_after_stepwise, model1)
+anova(model4_add_one_variable, model1)
+  
+```
+
+
+```{r}
+# Transformation for dealing with constant variance
+
+# Find the best lambda of Box-Cox method
+bc <- boxcox(step_model)
+best_lambda <- bc$x[which.max(bc$y)]
+best_lambda
+
+# Transform and fit
+y <- train$Academic_Reputation_Score
+
+# Preventing the instability of lambda
+if (abs(best_lambda) < 1e-5) {
+  y_transformed <- log(y)
+} else {
+  y_transformed <- (y^best_lambda - 1) / (best_lambda)
+}
+
+# Model after Transformation
+transformed_fit <- lm(y_transformed ~ SIZE + Employer_Reputation_Score + 
+    Citations_per_Faculty_Score + International_Students_Score + 
+    International_Research_Network_Score + Employment_Outcomes_Score + 
+    Sustainability_Score, data = train)
+```
+
+```{r}
+# transformed model diagonstics
+par(mfrow = c(2, 2))
+plot(transformed_fit)
+```
+
+
+```{r}
+# Find the sample size and the number of predictors
+n <- nrow(train)                  # sample size 
+k <- length(coef(transformed_fit)) - 1  # number of predictors
+
+# Set leverage cutoff
+cutoff1 <- 2 * (k + 1) / n
+cutoff2 <- 3 * (k + 1) / n
+
+# Plots with cutoffs
+mod.hii <- hatvalues(step_model)
+plot(mod.hii, type = "h", ylab = "hii", main = "Leverage Plot")
+abline(h = cutoff1, col = "red")
+abline(h = cutoff2, col = "blue")
+abline(h = 0.5, col = "green")
+
+# Find all high leverage points
+which(mod.hii > cutoff1)
+```
+
+```{r}
+## Outliers
+new.mod.sresid <- rstandard(transformed_fit)
+plot(new.mod.sresid,type="h", main = "Standardized Residual Plot")
+abline(h=2,col="red")
+abline(h=-2,col="red")
+which(abs(new.mod.sresid)>4)
+```
+
+```{r}
+## Influential points
+
+## 1. Cook's distance
+new.mod.dii <- cooks.distance(transformed_fit)
+plot(new.mod.dii,type="h",ylab="Dii", main="Cook's Distance Plot")
+cutoff_dii <- qf(0.5,df1=4,df2=(nrow(mtcars)-3-1))
+abline(h=cutoff_dii,col="red")
+abline(h=1,col="blue")
+abline(h=4/nrow(mtcars),col="green")
+which(new.mod.dii>(4/nrow(mtcars)))
+```
+
+```{r}
+## 2. Difference in fitted values
+new.mod.dffits <- dffits(transformed_fit)
+plot(new.mod.dffits,type="h",ylab="DFFITS", main = "DFFITS")
+cutoff.dffits <- 2*sqrt(4/nrow(mtcars))
+abline(h=cutoff.dffits,col="red")
+abline(h=-cutoff.dffits,col="red")
+which(abs(new.mod.dffits)>cutoff.dffits)
+```
+
+```{r}
+# Removing all influential points to optimize the prediction
+# Step 1: Define the influential points to remove
+influential_points <- c(17, 22, 26, 303, 494, 567, 629, 724, 1428, 1448)
+
+# Step 2: Remove them from both train and y_transformed
+train_cleaned <- train[-influential_points, ]
+y_transformed_cleaned <- y_transformed[-influential_points]
+
+# Step 3: Fit new model
+transformed_fit_cleaned <- lm(y_transformed_cleaned ~ SIZE + Employer_Reputation_Score + 
+    Citations_per_Faculty_Score + International_Students_Score + 
+    International_Research_Network_Score + Employment_Outcomes_Score + 
+    Sustainability_Score, data = train_cleaned)
+
+# Step 4: Evaluate the new model after removing all influential points
+summary(transformed_fit_cleaned)
+```
+
+```{r}
+# Comparison between transformed model and transfomred model after removing influential points
+install.packages("AICcmodavg")
+library(AICcmodavg)
+
+model_comp <- data.frame(
+  Model = c("Original", "Cleaned"),
+  Adj_R2 = c(summary(transformed_fit)$adj.r.squared,
+             summary(transformed_fit_cleaned)$adj.r.squared),
+  AIC = c(AIC(transformed_fit), AIC(transformed_fit_cleaned)),
+  AICc = c(AICc(transformed_fit), AICc(transformed_fit_cleaned)),
+  BIC = c(BIC(transformed_fit), BIC(transformed_fit_cleaned))
+)
+
+print(model_comp)
+```
+
+```{r}
+# Our final model
+lm(y_transformed_cleaned ~ SIZE + Employer_Reputation_Score + 
+    Citations_per_Faculty_Score + International_Students_Score + 
+    International_Research_Network_Score + Employment_Outcomes_Score + 
+    Sustainability_Score, data = train_cleaned)
+```
+
+```{r}
+# Model Validation through K-Fold CV with
+# Load boot library
+if (!require("boot")) install.packages("boot")
+library(boot)
+
+# Step 1: Add transformed response to training set
+train$y_transformed <- y_transformed
+train_cleaned$y_transformed_cleaned <- y_transformed_cleaned
+
+# Step 2: Define formulas for both models
+formula_original <- y_transformed ~ SIZE + Employer_Reputation_Score +
+  Citations_per_Faculty_Score + International_Students_Score +
+  International_Research_Network_Score + Employment_Outcomes_Score +
+  Sustainability_Score
+
+formula_cleaned <- y_transformed_cleaned ~ SIZE + Employer_Reputation_Score +
+  Citations_per_Faculty_Score + International_Students_Score +
+  International_Research_Network_Score + Employment_Outcomes_Score +
+  Sustainability_Score
+
+# Step 3: Perform 10-fold CV
+set.seed(123)
+cv_original <- cv.glm(train, glm(formula_original, data = train), K = 10)
+cv_cleaned  <- cv.glm(train_cleaned, glm(formula_cleaned, data = train_cleaned), K = 10)
+
+# Step 4: Extract and print MSE
+mse_original_10fold <- cv_original$delta[1]
+mse_cleaned_10fold  <- cv_cleaned$delta[1]
+
+cat("10-fold CV MSE (Original model):", mse_original_10fold, "\n")
+cat("10-fold CV MSE (Cleaned model):", mse_cleaned_10fold, "\n")
+```
+
+```{r}
+# SECTION 5: Final Model Inference and Result
+Final_model <- lm(y_transformed_cleaned ~ SIZE + Employer_Reputation_Score + 
+    Citations_per_Faculty_Score + International_Students_Score + 
+    International_Research_Network_Score + Employment_Outcomes_Score + 
+    Sustainability_Score, data = train_cleaned)
+
+```
+
+```{r}
+# Load necessary package
+library(broom)
+
+# Tidy summary of final model (coefficients, std.error, t-value, p-value, conf int)
+model_table <- tidy(Final_model, conf.int = TRUE)
+
+# View the result
+print(model_table)
+
+library(knitr)
+
+# Display the table in a clean format
+kable(model_table, digits = 4, caption = "Final Model Coefficients with 95% Confidence Intervals")
+```
+```{r}
+# Extract performance metrics
+r2 <- summary(Final_model)$r.squared
+adj_r2 <- summary(Final_model)$adj.r.squared
+aic_val <- AIC(Final_model)
+bic_val <- BIC(Final_model)
+
+# Create a data frame for display
+metrics <- data.frame(
+  Metric = c("R-squared", "Adjusted R-squared", "AIC", "BIC"),
+  Value = c(r2, adj_r2, aic_val, bic_val)
+)
+
+# Display the metrics table
+kable(metrics, digits = 4, caption = "Final Model Performance Metrics")
+```
+
