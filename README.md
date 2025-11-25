@@ -50,7 +50,6 @@ After Lasso selection, AIC stepwise refinement, Box–Cox transformation (λ ≈
 |--------|--------|
 | **R²** | 0.8150 |
 | **Adjusted R²** | 0.8132 |
-| **10-fold CV MSE** | **0.585** (improved from 0.735 pre-cleaning) |
 | **AIC** | 2207.10 |
 | **BIC** | 2260.63 |
 
