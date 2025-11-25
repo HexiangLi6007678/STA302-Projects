@@ -14,9 +14,9 @@ Using a dataset of **1,500+ universities** and **10+ institutional indicators**,
 - Influential point diagnostics (Cook’s Distance, DFFITS, leverage)  
 - Final model inference and interpretation  
 
-**Full report:** [final project report (PDF)](final%20project%20report%20(1).pdf)  
-**Full R code:** [STA302(FINAL_CODE__).Rmd](STA302(FINAL_CODE__).Rmd)  
-**Dataset:** [QS World University Rankings 2025.csv](QS%20World%20University%20Rankings%202025%20(Top%20global%20universities).csv)
+**Full report:** [final project report (1).pdf](final%20project%20report%20(1).pdf)
+**Full R code:** [STA302(FINAL_CODE__).Rmd](STA302(FINAL_CODE__).Rmd)
+**Dataset:** [QS World University Rankings 2025 (Top global universities).csv](QS%20World%20University%20Rankings%202025%20(Top%20global%20universities).csv)
 
 ---
 
